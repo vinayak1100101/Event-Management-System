@@ -1,0 +1,15 @@
+/* Add some vertical padding to the body for better spacing */
+body {
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
+
+/* Style for the card elements to ensure consistent height and add a subtle transition */
+.card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}

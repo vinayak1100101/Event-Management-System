@@ -1,0 +1,5 @@
+git init
+git add .
+git commit -m "Initial Event Management project"
+git remote add origin https://github.com/vinayak1100101/event_management.git
+git push -u origin main
