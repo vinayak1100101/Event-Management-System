@@ -1,8 +1,9 @@
 # Import necessary modules from Flask and its extensions
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import os
 
 # --- App and Database Configuration ---
@@ -11,12 +12,13 @@ import os
 app = Flask(__name__)
 
 # Configure the secret key for session management and security
-# It's important to keep this key secret in a production environment
 app.config['SECRET_KEY'] = 'a_very_secret_key_that_should_be_changed'
 
+# Configure the folder to store uploaded images
+UPLOAD_FOLDER = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
 # Configure the SQLAlchemy database URI.
-# We use os.path.join to create a platform-independent path.
-# 'instance' is a conventional folder for database files that shouldn't be in version control.
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance', 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -26,7 +28,6 @@ db = SQLAlchemy(app)
 # Initialize Flask-Login for handling user sessions
 login_manager = LoginManager()
 login_manager.init_app(app)
-# Set the view to redirect to when a user needs to log in
 login_manager.login_view = 'login'
 
 
@@ -39,14 +40,11 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(150), nullable=False)
     
     # Relationship to the Event model
-    # 'author' back-references the User model from the Event model
     events = db.relationship('Event', backref='author', lazy=True)
 
-    # Method to set the password by hashing it
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
-    # Method to check if the provided password matches the hashed password
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
@@ -57,14 +55,14 @@ class Event(db.Model):
     date = db.Column(db.String(50), nullable=False)
     description = db.Column(db.Text, nullable=False)
     location = db.Column(db.String(200), nullable=False)
+    # This will now store the path to the uploaded image
+    image_url = db.Column(db.String(400), nullable=True)
     
-    # Foreign key to link an event to a user
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 
 # --- User Loader for Flask-Login ---
 
-# This function is used by Flask-Login to reload the user object from the user ID stored in the session
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -72,17 +70,20 @@ def load_user(user_id):
 
 # --- Routes ---
 
+# Route to serve uploaded files
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 # Home page: Displays all events
 @app.route('/')
 def index():
-    # Query all events from the database
     events = Event.query.all()
     return render_template('index.html', events=events)
 
-# Registration page: Handles new user registration
+# Registration page
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    # If the user is already logged in, redirect to the home page
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     
@@ -90,17 +91,14 @@ def register():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # Check if the username already exists
         user = User.query.filter_by(username=username).first()
         if user:
-            flash('Username already exists. Please choose a different one.', 'danger')
+            flash('Username already exists.', 'danger')
             return redirect(url_for('register'))
         
-        # Create a new user and set their password
         new_user = User(username=username)
         new_user.set_password(password)
         
-        # Add the new user to the database
         db.session.add(new_user)
         db.session.commit()
         
@@ -109,10 +107,9 @@ def register():
         
     return render_template('register.html')
 
-# Login page: Handles user login
+# Login page
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # If the user is already logged in, redirect to the home page
     if current_user.is_authenticated:
         return redirect(url_for('index'))
 
@@ -120,15 +117,12 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # Find the user by username
         user = User.query.filter_by(username=username).first()
         
-        # If user doesn't exist or password doesn't match, show an error
         if not user or not user.check_password(password):
             flash('Invalid username or password.', 'danger')
             return redirect(url_for('login'))
         
-        # Log the user in
         login_user(user)
         flash('Logged in successfully!', 'success')
         return redirect(url_for('dashboard'))
@@ -143,11 +137,10 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('index'))
 
-# Dashboard: Shows events posted by the current user
+# Dashboard
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # Query events created by the currently logged-in user
     user_events = Event.query.filter_by(user_id=current_user.id).all()
     return render_template('dashboard.html', events=user_events)
 
@@ -160,17 +153,27 @@ def post_event():
         date = request.form.get('date')
         description = request.form.get('description')
         location = request.form.get('location')
+        image_file = request.files.get('image')
         
-        # Create a new event associated with the current user
+        image_url = None
+        # Check if an image file was uploaded
+        if image_file and image_file.filename != '':
+            # Secure the filename to prevent malicious file names
+            filename = secure_filename(image_file.filename)
+            # Save the file to the upload folder
+            image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            # Create the URL for the saved image
+            image_url = url_for('uploaded_file', filename=filename)
+
         new_event = Event(
             title=title,
             date=date,
             description=description,
             location=location,
+            image_url=image_url,
             user_id=current_user.id
         )
         
-        # Add the new event to the database
         db.session.add(new_event)
         db.session.commit()
         
@@ -183,15 +186,13 @@ def post_event():
 @app.route('/delete_event/<int:event_id>', methods=['POST'])
 @login_required
 def delete_event(event_id):
-    # Find the event by its ID
+    # Corrected the function call from get_or_44 to get_or_404
     event_to_delete = Event.query.get_or_404(event_id)
     
-    # Ensure the current user is the author of the event
     if event_to_delete.author != current_user:
         flash('You do not have permission to delete this event.', 'danger')
         return redirect(url_for('index'))
     
-    # Delete the event from the database
     db.session.delete(event_to_delete)
     db.session.commit()
     
@@ -201,14 +202,15 @@ def delete_event(event_id):
 # --- Main Execution ---
 
 if __name__ == '__main__':
-    # Create the 'instance' directory if it doesn't exist
+    # Create the 'instance' and 'uploads' directories if they don't exist
     instance_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance')
+    uploads_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), app.config['UPLOAD_FOLDER'])
     if not os.path.exists(instance_path):
         os.makedirs(instance_path)
+    if not os.path.exists(uploads_path):
+        os.makedirs(uploads_path)
 
-    # Create all database tables within the app context
     with app.app_context():
         db.create_all()
     
-    # Run the Flask app in debug mode
     app.run(debug=True)

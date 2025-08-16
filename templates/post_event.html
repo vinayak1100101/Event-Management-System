@@ -6,7 +6,8 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <h2 class="card-title text-center mb-4">Post a New Event</h2>
-                <form method="POST" action="{{ url_for('post_event') }}">
+                <!-- Add enctype for file uploads -->
+                <form method="POST" action="{{ url_for('post_event') }}" enctype="multipart/form-data">
                     <!-- Event Title -->
                     <div class="mb-3">
                         <label for="title" class="form-label">Event Title</label>
@@ -21,6 +22,12 @@
                     <div class="mb-3">
                         <label for="location" class="form-label">Location</label>
                         <input type="text" class="form-control" id="location" name="location" required>
+                    </div>
+                    <!-- Event Image Upload -->
+                    <div class="mb-3">
+                        <label for="image" class="form-label">Upload Image (Optional)</label>
+                        <!-- Change input type to "file" -->
+                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
                     </div>
                     <!-- Event Description -->
                     <div class="mb-3">

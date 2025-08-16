@@ -14,6 +14,10 @@
         {% for event in events %}
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 shadow-sm">
+                <!-- Display image if a URL is provided -->
+                {% if event.image_url %}
+                    <img src="{{ event.image_url }}" class="card-img-top" alt="{{ event.title }}" style="height: 200px; object-fit: cover;">
+                {% endif %}
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title">{{ event.title }}</h5>
                     <h6 class="card-subtitle mb-2 text-muted">{{ event.date }} at {{ event.location }}</h6>
